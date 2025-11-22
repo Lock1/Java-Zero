@@ -1,43 +1,318 @@
+import java.util.Iterator;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
-/** 
-  * Container of [0..1] element.<br/>
+/** Container of [0..1] element.<br/>
   *
-  * Sum-type-ified {@link Optional}, provides exhaustible pattern match when used with modern {@code switch} expression.
+  * ADT-ified {@link Optional}, provides exhaustible pattern match when used with modern {@code switch} expression.<br/>
+  * Except {@link #zDangerouslyUnwrap(String)}, this type guaranteed to never return bare {@code null}.<br/>
+  * Except {@link #of(Object)}, this type functions (both static &amp; instance) never expect {@code null} arguments.
+  *
+  * @param <T> Any type
   *
   * @see <a href="https://doc.rust-lang.org/std/option/">Rust {@code Option<T>}</a>
-  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell {@code Maybe<T>}</a>
-  */
-public sealed interface Nilable<T> {
-    public record Has<T>(T value) implements Nilable<T> {}
-    public final class Empty<T> implements Nilable<T> {
+  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell {@code Maybe<T>}</a> */
+public sealed interface Nilable<T> extends Iterable<T> {
+    /** Type representing container of 1 element. Can be deconstructed via {@code instanceof} and {@code switch} expression.
+      * @param <T> Any type
+      * @param value Non-nullable value */
+    public record Has<T>(T value) implements Nilable<T> {
+        /** Canonical constructor with optional conservative check: Extra safe-guard against null, but incur 2x null check */
+        public Has { if (value == null) throw new RuntimeException(String.format("[%s] Fatal invariant violation: null", Nilable.Has.class.getName())); }
+        /** Produce debug string for this {@link Nilable.Has}. */
+        @Override public String toString() { return String.format("Has<%s>(%s)", this.value.getClass().getSimpleName(), this.value); }
+    }
+    /** Type representing container of 0 element.
+      * @param <T> Any type */
+    public static final class Empty<T> implements Nilable<T> {
         private static final Empty<?> INSTANCE = new Empty<>();
+        private Empty() {}
+        @Override public String toString() { return "Empty"; }
+        @Override public boolean equals(Object obj) { return this == obj; }
+        @Override public int hashCode() { return 0; }
+        /** Exactly like what title said. Borrows {@link Nilable.Empty}'s class enclosure for private namespace. */
+        private static class AtMostOnceIterator<T> implements Iterator<T> {
+            private final Nilable<T> value;
+            private AtMostOnceIterator(Nilable<T> value) { this.value = value; }
+            @Override public boolean hasNext() { return this.value.isHasValue(); }
+            @Override public T next() { return this.value.zDangerouslyUnwrap("Fatal error: AtMostOnceIterator.next() has no value"); }
+        }
+    }
+
+    /** Iterator for [0..1] element container. */
+    @Override
+    public default Iterator<T> iterator() {
+        return new Nilable.Empty.AtMostOnceIterator<>(this);
     }
 
 
 
+    // ------------------------- Static functions -------------------------
+    /** Primary factory method: Accept nullable values &amp; transform it into appropriate {@link Nilable} variant.
+      * @param <T> Any type
+      * @param nullableValue Nullable value of type {@code T}
+      * @return {@link Nilable}-wrapped type {@code T}, based on {@code nullableValue} */
     public static <T> Nilable<T> of(T nullableValue) {
         return nullableValue != null ? new Nilable.Has<>(nullableValue) : Nilable.empty();
     }
 
+    /** {@link Nilable.Empty} factory method. Compatible with any type parameter {@code T}.
+      * @param <T> Any type
+      *
+      * @return {@link Nilable.Empty} of type {@code T} */
     @SuppressWarnings("unchecked") // Empty container can be cast into any Nilable<T>
     public static <T> Nilable<T> empty() {
         return (Nilable<T>) Nilable.Empty.INSTANCE;
     }
 
+    /** Inbound-transmutation method: Apply canonical bijection {@link Optional} {@code ->} {@link Nilable}.
+      * @param <T> Any type
+      * @param optional {@link Optional} source to be converted
+      * @return Conversion result {@link Nilable}
+      *
+      * @see #toOptional() */
     public static <T> Nilable<T> from(Optional<T> optional) {
         return optional.isPresent() ? new Nilable.Has<>(optional.get()) : Nilable.empty();
     }
 
 
 
+    // ------------------------- Functor instance methods -------------------------
+    /** Primary functor method: Apply {@code mapper} if {@link Nilable#isHasValue()}, else no-op.
+      * @param <R> Mapped result type
+      * @param mapper Function to be applied to type {@code T} and produces value of type {@code R}. Can accept bare {@code null}-producing function.
+      * @return Mapped {@link Nilable} */
     public default <R> Nilable<R> map(Function<? super T,? extends R> mapper) {
         return this instanceof Nilable.Has(T value) ? Nilable.of(mapper.apply(value)) : Nilable.empty();
     }
 
+    /** Similar to {@link #map(Function)}, apply mapper if {@link Nilable#isHasValue()}.<br/>
+      * Can be seen as lazy-variant of {@link #and(Nilable)}.
+      * @param <R> Mapped result type
+      * @param mapper Function to be applied to type {@code T} and produces {@link Nilable} with type {@code R}. Reject {@code null}-producing, but {@link Nilable}-typed function.
+      * @return Flattened {@link Nilable}. Use {@link #map(Function)} if nested {@link Nilable} is desirable
+      * 
+      * @see #and(Nilable)
+      * @see <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.and_then">Rust counterpart: {@code Option::and_then()}</a>,
+      * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Control-Monad.html#v:-62--62--61-">Haskell counterpart: {@code Monad} typeclass {@code bind} or {@code >>=}</a> */
     @SuppressWarnings("unchecked") // Nilable<? extends R> -> Nilable<R>, just ignore Nilable<>, (? extends R) is assignable to R
     public default <R> Nilable<R> flatMap(Function<? super T,Nilable<? extends R>> mapper) {
-        return this instanceof Nilable.Has(T value) ? (Nilable<R>) mapper.apply(value) : Nilable.empty();
+        return this instanceof Nilable.Has(T value) ? (Nilable<R>) mapper.apply(value) /* Optimistic no-null-check */ : Nilable.empty();
+    }
+
+    /** {@link Nilable.Empty}-counterpart of {@link #map(Function)}: Map this container if {@link Nilable#isEmpty()}.<br/>
+      * Similiar to {@link #or(Nilable)} combined with {@link #of(Object)}.
+      * @param supplier Replacement value if {@link #isEmpty()}
+      * @return New {@link Nilable.Has} containing previous value or wrapped {@code supplier} */
+    public default Nilable<T> mapEmpty(T supplier) {
+        return this instanceof Nilable.Empty<T> ? Nilable.of(supplier) : this;
+    }
+
+    /** Lazy-variant of {@link #mapEmpty(Object)}.
+      * @param supplier Replacement value producer if {@link #isEmpty()}
+      * @return New {@link Nilable.Has} containing previous value or wrapped value produced by {@code supplier} */
+    public default Nilable<T> mapEmpty(Supplier<? extends T> supplier) {
+        return this instanceof Nilable.Empty<T> ? Nilable.of(supplier.get()) : this;
+    }
+
+    /** Filter this {@link Nilable}, similiar to {@link Stream#filter(Predicate)} with [0..1] element.<br/>
+      * See {@link #isHasValue(Predicate)} for transformation to {@code boolean}.
+      * @param predicate {@link Predicate} to be invoked when {@link Nilable#isHasValue()}
+      * @return Filtered {@link Nilable} */
+    public default Nilable<T> filter(Predicate<? super T> predicate) {
+        return this instanceof Nilable.Has(T value) && predicate.test(value) ? this : Nilable.empty();
+    }
+
+
+
+    // ------------------------- Transmutation methods -------------------------
+    /** Outbound-transmutation method: Apply canonical bijection {@link Nilable} {@code ->} {@link Optional}.
+      * @return Conversion result {@link Optional}
+      *
+      * @see #from(Optional) */
+    public default Optional<T> toOptional() {
+        return this instanceof Nilable.Has(T value) ? Optional.of(value) : Optional.empty();
+    }
+
+    /** Canonical injection from [0..1] container {@link Nilable} to [0..] container {@link Stream}.
+      * @return Injection result */
+    public default Stream<T> toStream() { // Note: Can't directly implements Stream<T>. Pollutes method namespace too much, some naming clash as well
+        return this instanceof Nilable.Has(T value) ? Stream.of(value) : Stream.empty();
+    }
+
+
+
+    // ------------------------- Query methods -------------------------
+    /** Test whether this {@link Nilable} is {@link Nilable.Has} or not.
+      * @return Guaranteed to be equivalent with {@code instanceof} {@link Nilable.Has} */
+    public default boolean isHasValue() {
+        return this instanceof Nilable.Has<T>;
+    }
+
+    /** Peek-and-predicate-variant of {@link #isHasValue()}.<br/>
+      * Can be handy alternative of {@code instanceof} pattern match without introducing new name/symbol.<br/>
+      * See {@link #filter(Predicate)} for {@link Nilable}-container preserving transformation.
+      * @param predicate {@link Predicate} to be invoked when {@link Nilable#isHasValue()}
+      * @return {@link Nilable.Empty} will produce {@code false}, else {@code predicate} evaluation result
+      *
+      * @see <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.is_some_and">Rust counterpart: {@code Option::is_some_and()}</a> */
+    public default boolean isHasValue(Predicate<? super T> predicate) {
+        return this instanceof Nilable.Has(T value) && predicate.test(value);
+    }
+
+    /** Dual of {@link #isHasValue()}, test whether this {@link Nilable} is {@link Nilable.Empty} or not.
+      * @return Guaranteed to be equivalent with {@code instanceof} {@link Nilable.Empty} */
+    public default boolean isEmpty() {
+        return this instanceof Nilable.Empty<T>;
+    }
+
+
+
+    // ------------------------- Side-effect methods -------------------------
+    /** Invoke {@code sideEffectLambda} with value inside if {@link #isHasValue()}.
+      * @param sideEffectLambda No-op function or side-effect lambda to be invoked
+      * @return This exact same {@link Nilable} instance */
+    public default Nilable<T> peek(Consumer<? super T> sideEffectLambda) {
+        if (this instanceof Nilable.Has(T value))
+            sideEffectLambda.accept(value);
+        return this;
+    }
+
+    /** Dual of {@link #peek(Consumer)}, perform {@code sideEffectLambda} if {@link #isEmpty()}.
+      * @param sideEffectLambda No-op function or side-effect lambda to be invoked
+      * @return This exact same {@link Nilable} instance */
+    public default Nilable<T> peekEmpty(Runnable sideEffectLambda) {
+        if (this instanceof Nilable.Empty<T>)
+            sideEffectLambda.run();
+        return this;
+    }
+
+
+
+    // ------------------------- Boolean short-circuiting operator -------------------------
+    /** Short-circuiting boolean OR: Return this {@link Nilable} if {@link #isHasValue()}, else {@code other}.
+      * @param other Replacement value
+      * @return This {@link Nilable} if {@link #isHasValue()} or {@code other} */
+    public default Nilable<T> or(Nilable<T> other) {
+        return this instanceof Nilable.Has<T> ? this : other;
+    }
+
+    /** Lazy-variant of {@link #or(Nilable)}.
+      * @param other Replacement value producer
+      * @return This {@link Nilable} if {@link #isHasValue()} or value produced by {@code other} */
+    @SuppressWarnings("unchecked") // See Nilable#flatMap
+    public default Nilable<T> or(Supplier<Nilable<? extends T>> other) {
+        return this instanceof Nilable.Has<T> ? this : (Nilable<T>) other.get();
+    }
+
+    /** Short-circuiting boolean AND: Replace this {@link Nilable}, value might be short-circuit result on {@link Nilable.Empty} or {@code other}<br/>
+      * Has similarity with and can be seen as {@link Nilable.Has} value-ignoring &amp; eager-variant of {@link Nilable#flatMap(Function)}.
+      * @param <R> Result type
+      * @param other Replacement value
+      * @return {@link Nilable.Empty} if this {@link #isEmpty()}, else {@code other}
+      *
+      * @see #flatMap(Function) */
+    public default <R> Nilable<R> and(Nilable<R> other) {
+        return this instanceof Nilable.Empty<T> ? Nilable.empty() : other;
+    }
+
+    /** Lazy-variant of {@link Nilable#and(Nilable)}.
+      * @param <R> Result type
+      * @param other Replacement value producer
+      * @return {@link Nilable.Empty} if this {@link #isEmpty()}, else value produced by {@code other} */
+    @SuppressWarnings("unchecked") // See Nilable#flatMap
+    public default <R> Nilable<R> and(Supplier<Nilable<? extends R>> other) {
+        return this instanceof Nilable.Empty<T> ? Nilable.empty() : (Nilable<R>) other.get();
+    }
+
+    /** Short-circuiting boolean XOR. Unlike other boolean operator, there's no lazy-counterpart.
+      * @param other Replacement value
+      * @return This {@link Nilable.Has} if {@code other} {@link #isEmpty()}, else {@code other} */
+    public default Nilable<T> xor(Nilable<T> other) {
+        return this instanceof Nilable.Has<T> && other instanceof Nilable.Empty<T> ? this : other;
+    }
+
+
+
+    // ------------------------- Unwrapping methods -------------------------
+    /** Safe-unwrap this {@link Nilable}: Use value contained inside this {@link Nilable.Has}, or use supplied value {@code other} if {@link Nilable.Empty}.<br/>
+      * @param other Alternative value when this {@link Nilable} {@link #isEmpty()}
+      * @return Non-nullable value of type {@code T} (see {@link #orElse(Supplier)} on non-nullability guarantee) */
+    public default T orElse(T other) {
+        return this instanceof Nilable.Has(T value) ? value : other;
+    }
+
+    /** Lazy-variant of {@link #orElse(Object)}.<br/>
+      * Deliberately overload {@link #orElse(Object)} for compile-time null-safety ({@code null} will produce ambiguous method error).
+      * @param other {@link Supplier} of non-nullable type {@code T}. If {@link Supplier} produces {@code null}, throws {@link RuntimeException}
+      * @return Non-nullable value of type {@code T} */
+    public default T orElse(Supplier<? extends T> other) {
+        return switch (this) {
+            case Nilable.Has(T value) -> value;
+            case Nilable.Empty<T> __  -> {
+                final T produced = other.get();
+                if (produced == null)
+                    throw new RuntimeException(String.format("[%s] Fatal assertion in Nilable.orElse(Supplier<T>): Supplier produces null value", Nilable.Empty.class.getName()));
+                yield produced;
+            }
+        };
+    }
+
+    /** Merged {@link Optional#get()}-{@link Optional#orElseThrow()}: Forcefully unwrap this container.<br/>
+      * Unlike {@link Optional#orElseThrow()}, {@link #unwrap()}-family function signature is marked with checked exception.
+      * @return Non-null value inside this {@link Nilable.Has}
+      * @throws Exception Invoked on {@link Nilable.Empty}. Checked exception with default message. */
+    public default T unwrap() throws Exception {
+        return switch (this) {
+            case Nilable.Has(T value) -> value;
+            case Nilable.Empty<T> __  -> { throw new Exception("Trying to invoke Nilable.Empty.unwrap()"); }
+        };
+    }
+
+    /** Variant of {@link #unwrap()} with customized checked exception for extra information.
+      * @param <E> Checked exception subtype
+      * @param onEmptyException Exception to be thrown
+      * @return Non-null value inside this {@link Nilable.Has}
+      * @throws E Invoked on {@link Nilable.Empty}. */
+    public default <E extends Exception> T unwrap(E onEmptyException) throws E {
+        return this.unwrap((Supplier<E>) () -> onEmptyException);
+    }
+
+    /** Lazy-variant of {@link #unwrap(Exception)}.
+      * @param <E> Checked exception subtype
+      * @param onEmptyException Exception supplier to be thrown
+      * @return Non-null value inside this {@link Nilable.Has}
+      * @throws E Invoked on {@link Nilable.Empty}. */
+    public default <E extends Exception> T unwrap(Supplier<? extends E> onEmptyException) throws E {
+        return switch (this) {
+            case Nilable.Has(T value) -> value;
+            case Nilable.Empty<T> __  -> { throw onEmptyException.get(); }
+        };
+    }
+
+    /** Dangerously unwrap this {@link Nilable}, avoid this unless necessary.<br/>
+      * Unlike {@link #unwrap()}-family, this method throws unchecked exception.<br/>
+      * Do not catch this {@link RuntimeException} thrown by this method within same lexical scope, use {@link #unwrap()}-family.<br/>
+      *
+      * In case it's really needed to invoke this, use <code>@SuppressWarnings("deprecation")</code> + variable definition.<br/>
+      * {@code z-} prefix is for Javadoc sorting and making dangerous operation as hideous as possible.
+      *
+      * @param invariantAssumptionComment Comment explaining why this invocation should be safe
+      * @return Non-null value inside this {@link Nilable.Has}
+      * @throws RuntimeException Invoked on {@link Nilable.Empty}. Contains {@code invariantAssumptionComment} as the error message. 
+      * 
+      * @see <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap">Rust counterpart: {@code Option::unwrap()}</a> */
+    @Deprecated(since="not-really-deprecated-but-only-used-as-dangerous-marker")
+    public default T zDangerouslyUnwrap(String invariantAssumptionComment) throws RuntimeException {
+        return switch (this) {
+            case Nilable.Has(T value) -> value;
+            case Nilable.Empty<T> __  -> { throw new RuntimeException(
+                String.format("[%s] Invariant violation exception: %s", Nilable.class.getName(), invariantAssumptionComment)
+            ); }
+        };
     }
 }

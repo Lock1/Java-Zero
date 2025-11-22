@@ -41,6 +41,12 @@ project.getRepositories()
         repository.mavenCentral()
     })
 
+sourceSets {
+    test {
+        java.setSrcDirs(listOf("src/test/"))
+    }
+}
+
 testing{
     this.suites{
         val test by this.getting(JvmTestSuite::class) {
