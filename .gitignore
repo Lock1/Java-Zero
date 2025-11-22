@@ -1,0 +1,13 @@
+# ----- Gradle -----
+.gradle
+build
+
+# ----- Output -----
+*.class
+bin
+
+# ----- Editor -----
+kls_database.db
+.project
+.settings
+.classpath
