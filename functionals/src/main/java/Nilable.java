@@ -34,7 +34,7 @@ public sealed interface Nilable<T> {
         @Override public String toString() { return String.format("Has<%s>(%s)", this.value.getClass().getSimpleName(), this.value); }
     }
     /** Type representing container of 0 element.
-      * @param <T> Any type */
+      * @param <T> Any type, used as a phantom type */
     public static final class Empty<T> implements Nilable<T> {
         private static final Empty<?> INSTANCE = new Empty<>();
         private Empty() {}
@@ -71,6 +71,46 @@ public sealed interface Nilable<T> {
         return (Nilable<T>) Nilable.Empty.INSTANCE;
     }
 
+    /** Transpose-{@link Faulty}: Bijective map {@code Faulty<Nilable<T>,E> -> Nilable<Faulty<T,E>>}.
+      * <table>
+      *     <caption>Table of all possible 3 mapping, identical to Rust's Result::transpose()</caption>
+      *     <thead>
+      *         <tr>
+      *             <th>Source</th>
+      *             <th>Destination</th>
+      *         </tr>
+      *     </thead>
+      *     <tbody>
+      *         <tr>
+      *             <td>{@code Faulty.Ok(Nilable.Has(value))}</td>
+      *             <td>{@code Nilable.Has(Faulty.Ok(value))}</td>
+      *         </tr>
+      *         <tr>
+      *             <td>{@code Faulty.Ok(Nilable.Empty)}</td>
+      *             <td>{@code Nilable.Empty}</td>
+      *         </tr>
+      *         <tr>
+      *             <td>{@code Faulty.Error(error)}</td>
+      *             <td>{@code Nilable.Has(Faulty.Error(error))}</td>
+      *         </tr>
+      *     </tbody>
+      * </table>
+      * @param <T> Any type
+      * @param <E> Any type but preferrably "error type"
+      * @param faulty Source to be transposed
+      * @return Transpose result {@link Nilable}
+      * @see Faulty#ofTransposed(Nilable) Inverse map: {@code Faulty::ofTransposed(Nilable)}
+      * @see <a href="https://doc.rust-lang.org/std/result/enum.Result.html#method.transpose">Rust counterpart: {@code Result::transpose()} (note: member function, unlike this {@code static} function)</a> */
+    public static <T,E> Nilable<Faulty<T,E>> ofTransposed(Faulty<Nilable<T>,E> faulty) {
+        return switch (faulty) {
+            case Faulty.Ok(Nilable<T> okValue) -> switch (okValue) {
+                case Nilable.Has(T hasValue) -> new Nilable.Has<>(new Faulty.Ok<>(hasValue));
+                case Nilable.Empty<T> __     -> Nilable.empty();
+            };
+            case Faulty.Error(E error)         -> new Nilable.Has<>(new Faulty.Error<>(error));
+        };
+    }
+
     /** Inbound-transmutation method: Apply canonical bijection {@link Optional} {@code ->} {@link Nilable}.
       * @param <T> Any type
       * @param optional {@link Optional} source to be converted
@@ -101,7 +141,6 @@ public sealed interface Nilable<T> {
             }
         }
     }
-
 
 
 
