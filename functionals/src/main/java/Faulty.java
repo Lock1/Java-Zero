@@ -17,7 +17,7 @@ import java.util.stream.Stream;
   * @see <a href="https://doc.rust-lang.org/std/result/index.html">Rust counterpart: {@code Result<T,E>}</a>
   * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Either.html">Haskell counterpart: {@code Either<L,R>}</a>
   */
-public sealed interface Faulty<T,E> {
+public sealed interface Faulty<T,E> { // Post-Valhalla: public sealed abstract value class Faulty<T,E>
     /** Type representing "successful computation" {@link Faulty}.
       * @param <T> Any type
       * @param <E> Any type but preferrably "error type". Used as a phantom type

@@ -22,7 +22,7 @@ import java.util.stream.Stream;
   *
   * @see <a href="https://doc.rust-lang.org/std/option/">Rust counterpart: {@code Option<T>}</a>
   * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell counterpart: {@code Maybe<T>}</a> */
-public sealed interface Nilable<T> {
+public sealed interface Nilable<T> { // Post-Valhalla: public sealed abstract value class Nilable<T>
     /** Type representing container of 1 element. Can be deconstructed via {@code instanceof} and {@code switch} expression.
       * @param <T> Any type
       * @param value Non-nullable value */
