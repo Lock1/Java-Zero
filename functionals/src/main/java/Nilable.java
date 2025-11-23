@@ -26,7 +26,7 @@ public sealed interface Nilable<T> {
     /** Type representing container of 1 element. Can be deconstructed via {@code instanceof} and {@code switch} expression.
       * @param <T> Any type
       * @param value Non-nullable value */
-    public record Has<T>(T value) implements Nilable<T> {
+    public /** value */ record Has<T>(T value) implements Nilable<T> {
         /** Canonical constructor with optional conservative check: Extra safe-guard against null, but incur 2x null check */
         public Has { if (value == null) throw new RuntimeException(String.format("[%s] Fatal invariant violation: null", Nilable.Has.class.getName())); }
         /** Produce debug string for this {@link Nilable.Has}. */
@@ -34,7 +34,7 @@ public sealed interface Nilable<T> {
     }
     /** Type representing container of 0 element.
       * @param <T> Any type, used as a phantom type */
-    public static final class Empty<T> implements Nilable<T> {
+    public static final /** value */ class Empty<T> implements Nilable<T> {
         private static final Empty<?> INSTANCE = new Empty<>();
         private Empty() {}
         @Override public String toString() { return "Empty"; }

@@ -22,12 +22,12 @@ public sealed interface Faulty<T,E> {
       * @param <T> Any type
       * @param <E> Any type but preferrably "error type". Used as a phantom type
       * @param value Value to be wrapped */
-    public record Ok<T,E>(T value) implements Faulty<T,E> {}
+    public /** value */ record Ok<T,E>(T value) implements Faulty<T,E> {}
     /** Type representing "failed computation" {@link Faulty}.
       * @param <T> Any type, used as a phantom type here
       * @param <E> Any type but preferrably "error type"
       * @param error Error value to be wrapped */
-    public record Error<T,E>(E error) implements Faulty<T,E> {}
+    public /** value */ record Error<T,E>(E error) implements Faulty<T,E> {}
 
 
 
