@@ -159,6 +159,8 @@ public sealed interface Faulty<T,E> {
       * @see <a href="https://doc.rust-lang.org/std/result/enum.Result.html#method.err">Rust counterpart: {@code Result::err()}</a> */
     public default Nilable<E> toNilableError() {
         return this instanceof Faulty.Error(E error) ? Nilable.of(error) : Nilable.empty();
-    } 
+    }
+
+    // TODO: WIP, more instance methods
 }
 
