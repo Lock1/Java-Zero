@@ -192,6 +192,26 @@ public sealed interface Nilable<T> { // Post-Valhalla: public sealed abstract va
 
 
     // ------------------------- Transmutation methods -------------------------
+    /** General outbound-transmutation method: Transform this {@link Nilable} into any type.<br/>
+      * This method can be seen as a fusion of {@link #map(Function)} &amp; {@link #orElse(Object)}.<br/>
+      * This method also can be seen as forward function composition or "pipeline" operator, allowing fluent chaining.<br/><br/>
+      *
+      * This method has a neat (and bit quirky) interaction with static functions, due to how Java method reference &amp; parametrized type works.<br/>
+      * For example, {@code nilableFaulty.to(Faulty::ofTransposed)}.<br/>
+      * It's somewhat possible to do compile-time type checking on parametrized type, but this mechanic has limitation with subtyping.<br/>
+      * Function interface might need to be explicitly declared as covariant in order to work with this method.<br/>
+      * Example: {@code Function<Nilable<Exception>,String> f; Nilable.of(new RuntimeException()).to(f);}<br/><br/>
+      *
+      * It's not restricted to pre-made function inside this library, it's up to user code to define convenience function that suits their needs.<br/>
+      * It also can be thought like Kotlin's extension functions, but without terrible namespace pollution it brings (opt-in explicit invocation of {@link #to(Function)}).
+      *
+      * @param <R> Any type
+      * @param transmutator {@link Nilable} type transformer. Use explicit type witnesses if needed, ex: {@code Function<? super Nilable<? extends T>,? extends R>}
+      * @return Transmutation result */
+    public default <R> R to(Function<? super Nilable<T>,? extends R> transmutator) { // Deliberately made type parameter T to be invariant, let the user code define it
+        return transmutator.apply(this);
+    }
+
     /** Outbound-transmutation method: Apply canonical bijection {@link Nilable} {@code ->} {@link Optional}.
       * @return Conversion result {@link Optional}
       *
