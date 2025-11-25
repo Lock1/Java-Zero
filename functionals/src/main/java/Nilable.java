@@ -48,7 +48,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
       * @param value Non-nullable value */
     public /** value */ record Has<T>(T value) implements Nilable<T> {
         /** Canonical constructor with optional conservative check: Extra safe-guard against null, but incur 2x null check */
-        public Has { if (value == null) throw new RuntimeException(String.format("[%s] Fatal invariant violation: null", Nilable.Has.class.getName())); }
+        public Has { if (value == null) throw new BuggyCodeException(String.format("[%s] Fatal invariant violation: null", Nilable.Has.class.getName())); }
         /** Produce debug string for this {@link Nilable.Has}. */
         @Override public String toString() { return String.format("Has<%s>(%s)", this.value.getClass().getSimpleName(), this.value); }
     }
@@ -121,7 +121,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
       * @return Conversion result {@link Nilable}
       *
       * @see #toOptional() */
-    public static <T> Nilable<T> from(Optional<T> optional) {
+    public static <T> Nilable<T> from(Optional<? extends T> optional) {
         return optional.isPresent() ? new Nilable.Has<>(optional.get()) : Nilable.empty();
     }
 
@@ -149,7 +149,8 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
 
 
     // ------------------------- Functor instance methods -------------------------
-    /** Primary functor method: Apply {@code mapper} if {@link Nilable#isHasValue()}, else no-op.
+    /** Primary functor method: Apply {@code mapper} if {@link Nilable#isHasValue()}, else no-op.<br/>
+      * Important note: Due to prevalence of returning bare {@code null} in Java code, this method can accept {@code null}-returning method reference or lambdas.
       * @param <R> Mapped result type
       * @param mapper Function to be applied to type {@code T} and produces value of type {@code R}. Can accept bare {@code null}-producing function.
       * @return Mapped {@link Nilable} */
@@ -292,8 +293,9 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
     /** Short-circuiting boolean OR: Return this {@link Nilable} if {@link #isHasValue()}, else {@code other}.
       * @param other Replacement value
       * @return This {@link Nilable} if {@link #isHasValue()} or {@code other} */
-    public default Nilable<T> or(Nilable<T> other) {
-        return this instanceof Nilable.Has<T> ? this : other;
+    @SuppressWarnings("unchecked") // See Nilable#flatMap
+    public default Nilable<T> or(Nilable<? extends T> other) {
+        return this instanceof Nilable.Has<T> ? this : (Nilable<T>) other;
     }
 
     /** Lazy-variant of {@link #or(Nilable)}.
@@ -311,8 +313,9 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
       * @return {@link Nilable.Empty} if this {@link #isEmpty()}, else {@code other}
       *
       * @see #flatMap(Function) */
-    public default <R> Nilable<R> and(Nilable<R> other) {
-        return this instanceof Nilable.Empty<T> ? Nilable.empty() : other;
+    @SuppressWarnings("unchecked") // See Nilable#flatMap
+    public default <R> Nilable<R> and(Nilable<? extends R> other) {
+        return this instanceof Nilable.Empty<T> ? Nilable.empty() : (Nilable<R>) other;
     }
 
     /** Lazy-variant of {@link Nilable#and(Nilable)}.
@@ -327,8 +330,9 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
     /** Short-circuiting boolean XOR. Unlike other boolean operator, there's no lazy-counterpart.
       * @param other Replacement value
       * @return This {@link Nilable.Has} if {@code other} {@link #isEmpty()}, else {@code other} */
-    public default Nilable<T> xor(Nilable<T> other) {
-        return this instanceof Nilable.Has<T> && other instanceof Nilable.Empty<T> ? this : other;
+    @SuppressWarnings("unchecked") // See Nilable#flatMap
+    public default Nilable<T> xor(Nilable<? extends T> other) {
+        return this instanceof Nilable.Has<T> && other instanceof Nilable.Empty /* Rawtype form */ ? this : (Nilable<T>) other;
     }
 
 
@@ -343,7 +347,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
 
     /** Lazy-variant of {@link #orElse(Object)}.<br/>
       * Deliberately overload {@link #orElse(Object)} for compile-time null-safety ({@code null} will produce ambiguous method error).
-      * @param other {@link Supplier} of non-nullable type {@code T}. If {@link Supplier} produces {@code null}, throws {@link RuntimeException}
+      * @param other {@link Supplier} of non-nullable type {@code T}. If {@link Supplier} produces {@code null}, throws {@link BuggyCodeException}
       * @return Non-nullable value of type {@code T} */
     public default T orElse(Supplier<? extends T> other) {
         return switch (this) {
@@ -351,7 +355,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
             case Nilable.Empty<T> __  -> {
                 final T produced = other.get();
                 if (produced == null)
-                    throw new RuntimeException(String.format("[%s] Fatal assertion in Nilable.orElse(Supplier<T>): Supplier produces null value", Nilable.Empty.class.getName()));
+                    throw new BuggyCodeException(String.format("[%s] Fatal assertion in Nilable.orElse(Supplier<T>): Supplier produces null value", Nilable.Empty.class.getName()));
                 yield produced;
             }
         };
@@ -392,21 +396,21 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
     /** Dangerously unwrap this {@link Nilable}, avoid this unless necessary.<br/>
       * Unlike {@link #unwrap()}-family, this method throws unchecked exception like {@link Optional#get()}.<br/>
       * This thrown exception should behave similarily to Rust's {@code Option::unwrap()} which result in thread-killing {@code panic!()}.<br/>
-      * Do not catch this {@link RuntimeException} thrown by this method within same lexical scope, use {@link #unwrap()}-family.<br/><br/>
+      * Do not catch this {@link BuggyCodeException} thrown by this method within same lexical scope, use {@link #unwrap()}-family.<br/><br/>
       *
       * In case it's really needed to invoke this, use <code>@SuppressWarnings("deprecation")</code> + variable definition.<br/>
       * {@code z-} prefix is for Javadoc sorting and making dangerous operation as hideous as possible.
       *
       * @param invariantAssumptionComment Comment explaining why this invocation should be safe
       * @return Non-null value inside this {@link Nilable.Has}
-      * @throws RuntimeException Invoked on {@link Nilable.Empty}. Contains {@code invariantAssumptionComment} as the error message. 
+      * @throws BuggyCodeException Invoked on {@link Nilable.Empty}. Contains {@code invariantAssumptionComment} as the error message. 
       * 
       * @see <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap">Rust counterpart: {@code Option::unwrap()}</a> */
     @Deprecated(since="not-really-deprecated-but-only-used-as-dangerous-marker")
-    public default T zDangerouslyUnwrap(String invariantAssumptionComment) throws RuntimeException {
+    public default T zDangerouslyUnwrap(String invariantAssumptionComment) throws BuggyCodeException {
         return switch (this) {
             case Nilable.Has(T value) -> value;
-            case Nilable.Empty<T> __  -> { throw new RuntimeException(
+            case Nilable.Empty<T> __  -> { throw new BuggyCodeException(
                 String.format("[%s] Invariant violation exception: %s", Nilable.class.getName(), invariantAssumptionComment)
             ); }
         };
