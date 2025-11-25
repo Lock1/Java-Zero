@@ -36,7 +36,7 @@ public interface Transmutable<T extends Transmutable<T>> {
       * @param <R> Any type
       * @param transmutator {@link Nilable} type transformer. Use explicit type witnesses if needed, ex: {@code Function<? super Nilable<? extends T>,? extends R>}
       * @return Transmutation result */
-    @SuppressWarnings("unchecked") // Cast warning site: (T) Transmutable<T>. But T is subtype of Transmutable<T> due to type parameter bound, so this cast should be safe
+    @SuppressWarnings("unchecked") // Cast warning: (T) Transmutable<T>. But T is subtype of Transmutable<T> due to type parameter bound, so this cast should be safe
     public default <R> R to(Function<? super T,? extends R> transmutator) { // This implicitly forces implementor type T to be invariant (ex: Nilable<U>, not Nilable<? extends U>) and it's an intended behavior 
         return transmutator.apply((T) this);
     }

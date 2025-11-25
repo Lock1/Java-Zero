@@ -2,6 +2,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
@@ -10,14 +11,16 @@ import java.util.stream.Stream;
   * 
   * Definition for "error type" is up to the library user, concretely could be {@link java.lang.Enum}, could be {@code sealed} types, etc, as long it denote "computation error".<br/>
   * However, some extra utility functions only works when {@code E} is subtype of {@link Exception} (ex: {@link #ifAnyErrorThrow(Faulty...)}).<br/><br/>
+  *
+  * Unlike {@link Nilable}, this type intended to represent "possible error need to be taken care of" and does not provide throwing-unwrap instance method.<br/>
+  * It's encouraged to use {@code instanceof} pattern match &amp; {@code switch} expression to handle this type.<br/><br/>
   * 
   * Warning: 0 check on raw {@code null}, do not use this parametric type with it.
   *
   * @param <T> Any type
   * @param <E> Any type but preferrably "error type"
   * @see <a href="https://doc.rust-lang.org/std/result/index.html">Rust counterpart: {@code Result<T,E>}</a>
-  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Either.html">Haskell counterpart: {@code Either<L,R>}</a>
-  */
+  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Either.html">Haskell counterpart: {@code Either<L,R>}</a> */
 public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-Valhalla: public sealed abstract value class Faulty<T,E>
     /** Type representing "successful computation" {@link Faulty}.
       * @param <T> Any type
@@ -131,6 +134,29 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
 
 
 
+    // ------------------------- Functor instance methods -------------------------
+    @SuppressWarnings("unchecked") // Cast warning: (Faulty<R,E>) Faulty.Error<T,E>. T is just a phantom type 
+    public default <T2> Faulty<T2,E> map(Function<? super T,? extends T2> mapper) {
+        return this instanceof Faulty.Ok(T value) ? new Faulty.Ok<>(mapper.apply(value)) : (Faulty<T2,E>) this;
+    }
+
+    @SuppressWarnings("unchecked") // Cast warning: See Faulty#map(), E is just a phantom type in Faulty.Ok<T,E>
+    public default <E2> Faulty<T,E2> mapError(Function<? super E,? extends E2> errorMapper) {
+        return this instanceof Faulty.Error(E error) ? new Faulty.Error<>(errorMapper.apply(error)) : (Faulty<T,E2>) this;
+    }
+
+    @SuppressWarnings("unchecked") // Cast warning: See Faulty#map(), T is just a phantom type in Faulty.Error<T,E>
+    public default <T2> Faulty<T2,E> flatMap(Function<? super T,Faulty<T2,E>> faultyMapper) {
+        return this instanceof Faulty.Ok(T value) ? faultyMapper.apply(value) : (Faulty<T2,E>) this;
+    }
+
+    public default Faulty<T,E> filter(Predicate<? super T> predicate, Supplier<? extends E> errorSupplier) {
+        return !(this instanceof Faulty.Ok(T value)) ? this : // If this is an error, then short-circuit & keep the value
+               predicate.test(value)                 ? this : new Faulty.Error<>(errorSupplier.get());
+    }
+
+
+
     // ------------------------- Transmutation methods -------------------------
     /** Outbound-transmutation method: Apply lossy injection {@link Faulty.Ok} {@code ->} {@link Nilable.Has} &amp; {@link Faulty.Error} {@code ->} {@link Nilable.Empty}.
       * @return Conversion result {@link Nilable}
@@ -148,6 +174,79 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
         return this instanceof Faulty.Error(E error) ? Nilable.of(error) : Nilable.empty();
     }
 
-    // TODO: WIP, more instance methods
+
+
+    // ------------------------- Query methods -------------------------
+    public default boolean isOk() {
+        return this instanceof Faulty.Ok<T,E>;
+    }
+
+    public default boolean isOk(Predicate<? super T> predicate) {
+        return this instanceof Faulty.Ok(T value) && predicate.test(value);
+    }
+
+    public default boolean isError() {
+        return this instanceof Faulty.Error<T,E>;
+    }
+
+    public default boolean isError(Predicate<? super E> predicate) {
+        return this instanceof Faulty.Error(E error) && predicate.test(error);
+    }
+
+
+
+    // ------------------------- Side-effect methods -------------------------
+    public default Faulty<T,E> peek(Consumer<? super T> sideEffectLambda) {
+        if (this instanceof Faulty.Ok(T value))
+            sideEffectLambda.accept(value);
+        return this;
+    }
+
+    public default Faulty<T,E> peekError(Consumer<? super E> sideEffectLambda) {
+        if (this instanceof Faulty.Error(E error))
+            sideEffectLambda.accept(error);
+        return this;
+    }
+
+
+
+    // ------------------------- Boolean short-circuiting operator -------------------------
+    public default Faulty<T,E> or(Faulty<T,E> other) {
+        return this instanceof Faulty.Ok<T,E> ? this : other;
+    }
+
+    @SuppressWarnings("unchecked") // Cast warning: Faulty<? extends T,? extends E> is compatible to Faulty<T,E>
+    public default Faulty<T,E> or(Supplier<Faulty<? extends T,? extends E>> other) {
+        return this instanceof Faulty.Ok<T,E> ? this : (Faulty<T,E>) other.get();
+    }
+
+    @SuppressWarnings("unchecked") // Cast warning: Faulty.Error<T,E> is compatible to Faulty<R,E> (phantom type)
+    public default <R> Faulty<R,E> and(Faulty<R,E> other) {
+        return this instanceof Faulty.Error<T,E> ? (Faulty<R,E>) this : other;
+    }
+
+    @SuppressWarnings("unchecked") // Cast warning: See phantom type #and(Faulty), this one also includes Faulty<T,E> is compatible to Faulty<? extends R,? extends E>
+    public default <R> Faulty<R,E> and(Supplier<Faulty<? extends R,? extends E>> other) {
+        return (Faulty<R,E>) (this instanceof Faulty.Error<T,E> ? this : other.get());
+    }
+
+
+
+    // ------------------------- Unwrapping methods -------------------------
+    public default T unwrapOkOrElse(T other) {
+        return this instanceof Faulty.Ok(T value) ? value : other;
+    }
+
+    public default T unwrapOkOrElse(Supplier<? extends T> other) {
+        return this instanceof Faulty.Ok(T value) ? value : other.get();
+    }
+
+    public default E unwrapErrorOrElse(E other) {
+        return this instanceof Faulty.Error(E error) ? error : other;
+    }
+
+    public default E unwrapErrorOrElse(Supplier<? extends E> other) {
+        return this instanceof Faulty.Error(E error) ? error : other.get();
+    }
 }
 
