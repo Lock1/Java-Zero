@@ -20,7 +20,7 @@ public interface Transmutable<T extends Transmutable<T>> {
       * Nilable.of(new RuntimeException())                               // RuntimeException is subtype of / extends Exception
       *     .to(f);
       * }</pre>
-      * For static functions, declare any function working with {@link Nilable} to be generic static function with appropriate type constraint / bound or do the similar thing with functional interface.<br/>
+      * For static functions, declare any function working with {@link Transmutable} to be generic static function with appropriate type constraint / bound or do the similar thing with functional interface.<br/>
       * Example <pre>{@code
       * static <T extends Exception> String f(Nilable<T> ex) { ... } // Declare type `T` in f(Nilable<T>) to be covariant
       * // static String f(Nilable<? extends Exception> ex) { ... }  // Acceptable alternative, similar to functional interfaces
@@ -34,7 +34,7 @@ public interface Transmutable<T extends Transmutable<T>> {
       * It also can be thought like Kotlin's extension functions, but without terrible namespace pollution it brings (opt-in explicit invocation of {@link #to(Function)}).
       *
       * @param <R> Any type
-      * @param transmutator {@link Nilable} type transformer. Use explicit type witnesses if needed, ex: {@code Function<? super Nilable<? extends T>,? extends R>}
+      * @param transmutator {@link Transmutable} type transformer. Use explicit type witnesses if needed, ex: {@code Function<? super Nilable<? extends T>,? extends R>}
       * @return Transmutation result */
     @SuppressWarnings("unchecked") // Cast warning: (T) Transmutable<T>. But T is subtype of Transmutable<T> due to type parameter bound, so this cast should be safe
     public default <R> R to(Function<? super T,? extends R> transmutator) { // This implicitly forces implementor type T to be invariant (ex: Nilable<U>, not Nilable<? extends U>) and it's an intended behavior 

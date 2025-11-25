@@ -1,3 +1,4 @@
+import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -103,6 +104,44 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
 
     /** {@link Faulty} sub-namespace related to {@link Stream}. */
     public enum Streams { ;
+        /** {@link Faulty} sub-namespace dedicated for {@link Collector}. */
+        public enum Collect { ;
+            /** Serial-stream only collector: TODO: Docs */
+            public static <T,E> Collector<Faulty<T,E>,?,Faulty<Stream<T>,E>> failFastCollect() {
+                return Collector.of(
+                    () -> new FunctionalDatas.TupleOf2<Stream.Builder<T>,Stream.Builder<E>>(Stream.<T>builder(), Stream.<E>builder()),
+                    (acc, element) -> {
+                        switch (element) {
+                            case Faulty.Ok(T value)    -> acc.t1().add(value);
+                            case Faulty.Error(E error) -> acc.t2().add(error);
+                        }
+                    },
+                    (left, right) -> { throw new BuggyCodeException("Faulty.Streams.Collect.failFastCollect() does not support parallel stream"); },
+                    tuple -> tuple.t2().build()
+                        .findAny()
+                        .map(Faulty::<Stream<T>,E>ofError)
+                        .orElseGet(() -> Faulty.of(tuple.t1().build()))
+                );
+            }
+
+            public static <T,E> Collector<Faulty<T,E>,?,Faulty<Stream<T>,Stream<E>>> failDeferredCollect() {
+                return Collector.of(
+                    () -> new FunctionalDatas.TupleOf2<Stream.Builder<T>,Stream.Builder<E>>(Stream.<T>builder(), Stream.<E>builder()),
+                    (acc, element) -> {
+                        switch (element) {
+                            case Faulty.Ok(T value)    -> acc.t1().add(value);
+                            case Faulty.Error(E error) -> acc.t2().add(error);
+                        }
+                    },
+                    (left, right) -> { throw new BuggyCodeException("Faulty.Streams.Collect.failDeferredCollect() does not support parallel stream"); },
+                    tuple -> {
+                        final List<E> errors = tuple.t2().build().toList();
+                        return errors.isEmpty() ? Faulty.of(tuple.t1().build()) : Faulty.ofError(errors.stream());
+                    }
+                );
+            }
+        }
+
         /** {@link Faulty}-{@link Stream} sub-namespace dedicated for {@link Stream#mapMulti(BiConsumer)}.
           * @since JDK 21 */
         public enum MapMulti { ;
