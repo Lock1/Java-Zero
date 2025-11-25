@@ -2,6 +2,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collector;
 import java.util.stream.Stream;
 
 /** Disjoint container, contain either 1 element {@code T} or 1 element {@code E}.<br/>
@@ -17,7 +18,7 @@ import java.util.stream.Stream;
   * @see <a href="https://doc.rust-lang.org/std/result/index.html">Rust counterpart: {@code Result<T,E>}</a>
   * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Either.html">Haskell counterpart: {@code Either<L,R>}</a>
   */
-public sealed interface Faulty<T,E> { // Post-Valhalla: public sealed abstract value class Faulty<T,E>
+public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-Valhalla: public sealed abstract value class Faulty<T,E>
     /** Type representing "successful computation" {@link Faulty}.
       * @param <T> Any type
       * @param <E> Any type but preferrably "error type". Used as a phantom type
@@ -53,25 +54,11 @@ public sealed interface Faulty<T,E> { // Post-Valhalla: public sealed abstract v
     /** Transpose-{@link Nilable}: Bijective map {@code Nilable<Faulty<T,E>> -> Faulty<Nilable<T>,E>}.
       * <table>
       *     <caption>Table of all possible 3 mapping, identical to Rust's Option::transpose()</caption>
-      *     <thead>
-      *         <tr>
-      *             <th>Source</th>
-      *             <th>Destination</th>
-      *         </tr>
-      *     </thead>
+      *     <thead><tr><th>Source</th><th>Destination</th></tr></thead>
       *     <tbody>
-      *         <tr>
-      *             <td>{@code Nilable.Has(Faulty.Ok(value))}</td>
-      *             <td>{@code Faulty.Ok(Nilable.Has(value))}</td>
-      *         </tr>
-      *         <tr>
-      *             <td>{@code Nilable.Has(Faulty.Error(error))}</td>
-      *             <td>{@code Faulty.Error(error)}</td>
-      *         </tr>
-      *         <tr>
-      *             <td>{@code Nilable.Empty}</td>
-      *             <td>{@code Faulty.Ok(Nilable.Empty)}</td>
-      *         </tr>
+      *         <tr><td>{@code Nilable.Has(Faulty.Ok(value))}</td>   <td>{@code Faulty.Ok(Nilable.Has(value))}</td></tr>
+      *         <tr><td>{@code Nilable.Has(Faulty.Error(error))}</td><td>{@code Faulty.Error(error)}</td></tr>
+      *         <tr><td>{@code Nilable.Empty}</td>                   <td>{@code Faulty.Ok(Nilable.Empty)}</td></tr>
       *     </tbody>
       * </table>
       * @param <T> Any type

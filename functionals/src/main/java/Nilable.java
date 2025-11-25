@@ -42,7 +42,7 @@ import java.util.stream.Stream;
   *
   * @see <a href="https://doc.rust-lang.org/std/option/">Rust counterpart: {@code Option<T>}</a>
   * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell counterpart: {@code Maybe<T>}</a> */
-public sealed interface Nilable<T> { // Post-Valhalla: public sealed abstract value class Nilable<T>
+public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Valhalla: public sealed abstract value class Nilable<T>
     /** Type representing container of 1 element. Can be deconstructed via {@code instanceof} and {@code switch} expression.
       * @param <T> Any type
       * @param value Non-nullable value */
@@ -197,41 +197,6 @@ public sealed interface Nilable<T> { // Post-Valhalla: public sealed abstract va
 
 
     // ------------------------- Transmutation methods -------------------------
-    /** General outbound-transmutation method: Transform this {@link Nilable} into any type.<br/>
-      * This method can be seen as a fusion of {@link #map(Function)} &amp; {@link #orElse(Object)}.<br/>
-      * This method also can be seen as forward function composition or "pipeline" operator, allowing fluent chaining.<br/><br/>
-      *
-      * This method has a neat (and bit quirky) interaction with static functions, due to how Java method reference &amp; parametrized type works.<br/>
-      * For example, {@code nilableFaulty.to(Faulty::ofTransposed)}.<br/>
-      *
-      * <h4>Dealing with subtyping</h4>
-      * With static functions, it's possible to emulate other languages compile-time type checking on parametrized types like what happen here.<br/> 
-      * However, this mechanic has some limitation when used alongside subtyping, so additional care is required when defining function accepting parametrized type like {@link Nilable}.<br/><br/>
-      *
-      * Functional interfaces need to be explicitly declared as covariant in order to work with this method.<br/>
-      * Example: <pre>{@code
-      * Function<Nilable<? extends Exception>,String> f = ex -> { ... }; // Covariance: ? extends Exception
-      * Nilable.of(new RuntimeException())                               // RuntimeException is subtype of / extends Exception
-      *     .to(f);
-      * }</pre>
-      * For static functions, declare any function working with {@link Nilable} to be generic static function with appropriate type constraint / bound.<br/>
-      * Example <pre>{@code
-      * static <T extends Exception> String f(Nilable<T> ex) { ... } // Similar to functional interfaces, declare type `T` in f(Nilable<T>) to be covariant
-      * Nilable.of(new RuntimeException())                           // Exception :> RuntimeException
-      *     .to(Main::f);
-      * }</pre>
-      *
-      * <h4>Flexibility &amp; extension functions</h4>
-      * It's not restricted to pre-made function inside this library, it's up to user code to define convenience function that suits their needs.<br/>
-      * It also can be thought like Kotlin's extension functions, but without terrible namespace pollution it brings (opt-in explicit invocation of {@link #to(Function)}).
-      *
-      * @param <R> Any type
-      * @param transmutator {@link Nilable} type transformer. Use explicit type witnesses if needed, ex: {@code Function<? super Nilable<? extends T>,? extends R>}
-      * @return Transmutation result */
-    public default <R> R to(Function<? super Nilable<T>,? extends R> transmutator) { // Deliberately made type parameter T to be invariant
-        return transmutator.apply(this);
-    }
-
     /** Outbound-transmutation method: Apply canonical bijection {@link Nilable} {@code ->} {@link Optional}.
       * @return Conversion result {@link Optional}
       *
