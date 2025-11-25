@@ -41,16 +41,22 @@ project.getRepositories()
         repository.mavenCentral()
     })
 
+project.dependencies{
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.14.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.14.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.14.0")
+}
+
 sourceSets {
     test {
-        java.setSrcDirs(listOf("src/test/"))
+        java.setSrcDirs(listOf("src/test/java"))
     }
 }
 
-testing{
-    this.suites{
-        val test by this.getting(JvmTestSuite::class) {
-            useJUnitJupiter() 
-        }
-    }
-}
+project.getTasks()
+    .configure(Javaificator.lambdaToClosure{ taskRepository: TaskContainer ->
+        taskRepository.named("test", Test::class).configure(Javaificator.lambdaToAction{ testTask: Test ->
+            testTask.useJUnitPlatform()
+        })
+    })
+
