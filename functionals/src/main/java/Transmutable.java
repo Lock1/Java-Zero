@@ -1,7 +1,10 @@
 import java.util.function.Function;
 
 /** F-bounded parametric type: Provides "forward function composition".<br/>
-  * @param <T> Any type, but in concrete implementation "self"-type. Example: {@code interface Nilable<T> extends Transmutable<Nilable<T>>} */
+  * Warning: This interface is designed for "final data container" types (ex. <code>@lombok.Value</code> classes, JDK 16+ {@code record}).
+  *          F-bounded parametric types plays poorly with subtyping, so avoid this in mutationful subtyping-ridden-land.
+  *
+  * @param <T> Any type. But in implementation-site, use "self"-type. Example: {@code interface Nilable<T> extends Transmutable<Nilable<T>>} */
 public interface Transmutable<T extends Transmutable<T>> {
     /** General outbound-transmutation method: Transform this {@link Transmutable} into any type.<br/>
       * This method can be seen as a fusion of {@code map(Function)} &amp; {@code orElse(Object)}.<br/>
@@ -20,10 +23,10 @@ public interface Transmutable<T extends Transmutable<T>> {
       * Nilable.of(new RuntimeException())                               // RuntimeException is subtype of / extends Exception
       *     .to(f);
       * }</pre>
-      * For static functions, declare any function working with {@link Transmutable} to be generic static function with appropriate type constraint / bound or do the similar thing with functional interface.<br/>
+      * For static functions, declare any function working with {@link Transmutable} to be generic static function with appropriate type constraint.<br/>
       * Example <pre>{@code
       * static <T extends Exception> String f(Nilable<T> ex) { ... } // Declare type `T` in f(Nilable<T>) to be covariant
-      * // static String f(Nilable<? extends Exception> ex) { ... }  // Acceptable alternative, similar to functional interfaces
+      * // static String f(Nilable<? extends Exception> ex) { ... }  // Alternative, but preferrably avoid this due to compile error message tend to be clunkier
       *
       * Nilable.of(new RuntimeException())                           // Exception :> RuntimeException
       *     .to(Main::f);
@@ -39,5 +42,14 @@ public interface Transmutable<T extends Transmutable<T>> {
     @SuppressWarnings("unchecked") // Cast warning: (T) Transmutable<T>. But T is subtype of Transmutable<T> due to type parameter bound, so this cast should be safe
     public default <R> R to(Function<? super T,? extends R> transmutator) { // This implicitly forces implementor type T to be invariant (ex: Nilable<U>, not Nilable<? extends U>) and it's an intended behavior 
         return transmutator.apply((T) this);
+    }
+
+    /** Typesafe (as in no-effects) forward casting syntax.<br/>
+      * @param <R> Any type
+      * @param targetType Class literal representing target cast type
+      * @return Failable casting result */
+    @SuppressWarnings("unchecked") // Cast warning: (R) this. Checked via Class.isInstance()
+    public default <R> Nilable<R> cast(Class<R> targetType) {
+        return targetType.isInstance(this) ? Nilable.of((R) this) : Nilable.empty();
     }
 }
