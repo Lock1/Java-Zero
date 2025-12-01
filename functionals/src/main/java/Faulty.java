@@ -36,7 +36,7 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
 
 
 
-    // ------------------------- Static functions -------------------------
+    // ------------------------- Static functions: Factories -------------------------
     /** Primary factory method {@link Faulty.Ok}: Equivalent to {@link Faulty.Ok#Ok(Object)}.
       * @param <T> Any type
       * @param <E> Any type but preferrably "error type". Used as a phantom type
@@ -53,6 +53,51 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
       * @return {@link Faulty} of appropriate type */
     public static <T,E> Faulty<T,E> ofError(E error) {
         return new Faulty.Error<>(error);
+    }
+
+    /** Factory: {@code try}-statement replacement for checked exception, turning it into typed {@link Faulty}.<br/>
+      * Provides expression alternative for {@code try}-statement + checked exception.
+      *
+      * <b>WARNING: Avoid using this function to catch unchecked exception, even though it can.</b>
+      *             If this function catches unrecognized exception type, this function will throw {@link BuggyCodeException}.
+      *
+      * @param <T> Any type
+      * @param <E> Subtype of {@link Exception}
+      * @param expectedThrowType Class literal of {@code E}, expected exception to be thrown from supplier
+      * @param supplier Side-effect producer lambda that might throws {@code E}
+      * @return Well-typed {@link Faulty} */
+    public static <T,E extends Exception> Faulty<T,E> fromCheckedCatch(Class<E> expectedThrowType, FunctionalDatas.ThrowingSupplier<T,E> supplier) {
+        try {
+            return Faulty.of(supplier.get());
+        } catch (Exception e) {
+            if (expectedThrowType.isInstance(e))
+                return Faulty.ofError(expectedThrowType.cast(e));
+            throw new BuggyCodeException("Faulty.fromCheckedCatch() catches wrong exception type (possibly being used to catch unchecked exception which violate Faulty.fromCheckedCatch() contract)", e);
+        }
+    }
+
+    /** Factory: Fallback to {@link Exception} variant of {@link #fromCheckedCatch(Class, FunctionalDatas.ThrowingSupplier)}.
+      * @param <T> Any type
+      * @param supplier Side-effect product lambda that might throws {@link Exception}
+      * @return {@link Faulty} parametrized with {@link Exception} */
+    public static <T> Faulty<T,Exception> fromCheckedCatch(FunctionalDatas.ThrowingSupplier<T,?> supplier) {
+        try {
+            return Faulty.of(supplier.get());
+        } catch (Exception e) {
+            return Faulty.ofError(e);
+        }
+    }
+
+    /** Factory: {@code try}-statement for all kind of unchecked exception, turning it into typed {@link Faulty}.<br/>
+      * @param <T> Any type
+      * @param supplier Side-effect producer lambda that might throws unchecked {@code RuntimeException}
+      * @return Non-specific typed {@link Faulty} */
+    public static <T> Faulty<T,RuntimeException> fromCatch(FunctionalDatas.ThrowingSupplier<T,RuntimeException> supplier) {
+        try {
+            return Faulty.of(supplier.get());
+        } catch (RuntimeException e) {
+            return Faulty.ofError(e);
+        }
     }
 
     /** Transpose-{@link Nilable}: Bijective map {@code Nilable<Faulty<T,E>> -> Faulty<Nilable<T>,E>}.
@@ -81,6 +126,9 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
         };
     }
 
+
+
+    // ------------------------- Static functions: Utilities -------------------------
     /** Specialized variant of {@link Faulty}: {@code E} is subtype of {@link Exception}.<br/> 
       * @param <E> Any subtype of {@link Exception}
       * @param faulties Faulties to check
@@ -201,11 +249,20 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
       * @return Conversion result {@link Nilable}
       *
       * @see <a href="https://doc.rust-lang.org/std/result/enum.Result.html#method.ok">Rust counterpart: {@code Result::ok()}</a> */
-    public default Nilable<T> toNilable() {
+    public default Nilable<T> toNilableOk() {
         return this instanceof Faulty.Ok(T value) ? Nilable.of(value) : Nilable.empty();
     } 
 
-    /** Outbound-transmutation method: Dual of {@link #toNilable()}, {@link Faulty.Error} {@code ->} {@link Nilable.Has}.
+    /** T-split variant of {@link Faulty#toNilableOk()}: Commonly used for logging &amp; deliberately "don't care" with specific of type {@code E}.
+      * @param errorSideEffectLambda Side-effect lambda consuming {@code E} type
+      * @return Conversion result {@link Nilable} */
+    public default Nilable<T> toNilableTeeSplit(Consumer<? super E> errorSideEffectLambda) {
+        if (this instanceof Faulty.Error(E error))
+            errorSideEffectLambda.accept(error);
+        return this instanceof Faulty.Ok(T value) ? Nilable.of(value) : Nilable.empty();
+    } 
+
+    /** Outbound-transmutation method: Dual of {@link #toNilableOk()}, {@link Faulty.Error} {@code ->} {@link Nilable.Has}.
       * @return Conversion result {@link Nilable}
       *
       * @see <a href="https://doc.rust-lang.org/std/result/enum.Result.html#method.err">Rust counterpart: {@code Result::err()}</a> */
