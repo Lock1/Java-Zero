@@ -161,7 +161,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
     /** Similar to {@link #map(Function)}, apply mapper if {@link Nilable#isHasValue()}.<br/>
       * Can be seen as lazy-variant of {@link #and(Nilable)}.
       * @param <R> Mapped result type
-      * @param mapper Function to be applied to type {@code T} and produces {@link Nilable} with type {@code R}. Reject {@code null}-producing, but {@link Nilable}-typed function.
+      * @param mapper Function to be applied to type {@code T} and produces {@link Nilable} with type {@code R}. Optimistic unchecked: Never return raw {@code null} in {@link Nilable}-typed function. What's the point importing this class but not using it.
       * @return Flattened {@link Nilable}. Use {@link #map(Function)} if nested {@link Nilable} is desirable
       * 
       * @see #and(Nilable)
@@ -170,6 +170,14 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
     @SuppressWarnings("unchecked") // Nilable<? extends R> -> Nilable<R>, just ignore Nilable<>, (? extends R) is assignable to R
     public default <R> Nilable<R> flatMap(Function<? super T,Nilable<? extends R>> mapper) {
         return this instanceof Nilable.Has(T value) ? (Nilable<R>) mapper.apply(value) /* Optimistic no-null-check */ : Nilable.empty();
+    }
+
+    /** {@link Optional}-adapter variant of {@link #flatMap(Function)}.
+      * @param <R> Mapped result type
+      * @param mapper Function to be applied to type {@code T} and produces {@link Optional} with type {@code R}.
+      * @return Flattened {@link Nilable}. */
+    public default <R> Nilable<R> flatMapOptional(Function<? super T,Optional<? extends R>> mapper) {
+        return this instanceof Nilable.Has(T value) ? Nilable.from(mapper.apply(value)) : Nilable.empty();
     }
 
     /** {@link Nilable.Empty}-counterpart of {@link #map(Function)}: Map this container if {@link Nilable#isEmpty()}.<br/>
