@@ -5,6 +5,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /** Disjoint container, contain either 1 element {@code T} or 1 element {@code E}.<br/>
@@ -136,7 +137,7 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
     @SafeVarargs // Read-only & reference copying to new Iterable<T>
     public static <E extends Exception> Iterable<E> iterateException(Faulty<?,E> ...faulties) {
         return () -> Stream.of(faulties)
-            .mapMulti(Faulty.Streams.MapMulti.filterError())
+            .mapMulti(Faulty.Streams.MapMulti.takeError())
             .iterator();
     }
 
@@ -154,37 +155,32 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
     public enum Streams { ;
         /** {@link Faulty} sub-namespace dedicated for {@link Collector}. */
         public enum Collect { ;
-            /** Serial-stream only collector: TODO: Docs */
-            public static <T,E> Collector<Faulty<T,E>,?,Faulty<Stream<T>,E>> failFastCollect() {
-                return Collector.of(
-                    () -> new FunctionalDatas.TupleOf2<Stream.Builder<T>,Stream.Builder<E>>(Stream.<T>builder(), Stream.<E>builder()),
-                    (acc, element) -> {
-                        switch (element) {
-                            case Faulty.Ok(T value)    -> acc.t1().add(value);
-                            case Faulty.Error(E error) -> acc.t2().add(error);
-                        }
-                    },
-                    (left, right) -> { throw new BuggyCodeException("Faulty.Streams.Collect.failFastCollect() does not support parallel stream"); },
-                    tuple -> tuple.t2().build()
-                        .findAny()
-                        .map(Faulty::<Stream<T>,E>ofError)
-                        .orElseGet(() -> Faulty.of(tuple.t1().build()))
+            public static <T,E> Collector<Faulty<T,E>,?,Stream<T>> takeOk() {
+                return Collector.<Faulty<T,E>,Stream.Builder<T>,Stream<T>>of(
+                    Stream::<T>builder,
+                    (acc, element) -> { element.peek(acc::add); },
+                    (left, right) -> { right.build().forEach(left::add); return left; },
+                    stream -> stream.build()
                 );
             }
 
+            public static <T,E> Collector<Faulty<T,E>,?,Stream<E>> takeError() {
+                return Collector.<Faulty<T,E>,Stream.Builder<E>,Stream<E>>of(
+                    Stream::<E>builder,
+                    (acc, element) -> { element.peekError(acc::add); },
+                    (left, right) -> { right.build().forEach(left::add); return left; },
+                    stream -> stream.build()
+                );
+            }
+
+            /** TODO: Docs. Fail-fast counterpart better served by MapMulti.filterX */
             public static <T,E> Collector<Faulty<T,E>,?,Faulty<Stream<T>,Stream<E>>> failDeferredCollect() {
-                return Collector.of(
-                    () -> new FunctionalDatas.TupleOf2<Stream.Builder<T>,Stream.Builder<E>>(Stream.<T>builder(), Stream.<E>builder()),
-                    (acc, element) -> {
-                        switch (element) {
-                            case Faulty.Ok(T value)    -> acc.t1().add(value);
-                            case Faulty.Error(E error) -> acc.t2().add(error);
-                        }
-                    },
-                    (left, right) -> { throw new BuggyCodeException("Faulty.Streams.Collect.failDeferredCollect() does not support parallel stream"); },
-                    tuple -> {
-                        final List<E> errors = tuple.t2().build().toList();
-                        return errors.isEmpty() ? Faulty.of(tuple.t1().build()) : Faulty.ofError(errors.stream());
+                return Collectors.teeing(
+                    Collect.<T,E>takeOk(),
+                    Collect.<T,E>takeError(),
+                    (oks, errors) -> {
+                        final List<E> errorList = errors.toList();
+                        return errorList.isEmpty() ? Faulty.of(oks) : Faulty.ofError(errorList.stream());
                     }
                 );
             }
@@ -198,7 +194,7 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
               * @param <E> Any type but preferrably "error type"
               * @return {@link BiConsumer} that applies side-effect to its arguments
               * @see Nilable.Streams.MapMulti#filterUnwrap() */
-            public static <T,E> BiConsumer<Faulty<T,?>,Consumer<T>> filterOk() {
+            public static <T,E> BiConsumer<Faulty<T,?>,Consumer<T>> takeOk() {
                 return (faulty, downstreamPipeline) -> {
                     if (faulty instanceof Faulty.Ok(T value))
                         downstreamPipeline.accept(value);
@@ -210,7 +206,7 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
               * @param <E> Any type but preferrably "error type"
               * @return {@link BiConsumer} that applies side-effect to its arguments
               * @see Nilable.Streams.MapMulti#filterUnwrap() */
-            public static <T,E> BiConsumer<Faulty<?,E>,Consumer<E>> filterError() {
+            public static <T,E> BiConsumer<Faulty<?,E>,Consumer<E>> takeError() {
                 return (faulty, downstreamPipeline) -> {
                     if (faulty instanceof Faulty.Error(E error))
                         downstreamPipeline.accept(error);
@@ -237,7 +233,8 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
         return this instanceof Faulty.Ok(T value) ? faultyMapper.apply(value) : (Faulty<T2,E>) this;
     }
 
-    public default Faulty<T,E> filter(Predicate<? super T> predicate, Supplier<? extends E> errorSupplier) {
+    /** TODO: Docs. Behave similar to filter() */
+    public default Faulty<T,E> testOrError(Predicate<? super T> predicate, Supplier<? extends E> errorSupplier) {
         return !(this instanceof Faulty.Ok(T value)) ? this : // If this is an error, then short-circuit & keep the value
                predicate.test(value)                 ? this : new Faulty.Error<>(errorSupplier.get());
     }
