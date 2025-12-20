@@ -1,3 +1,10 @@
+/**
+  * This is basic Gradle project template for Java Library, ready to be copied.<br/>
+  * Note: By default, this will create thin jar (originally for 0-external-dependency libraries). 
+  */
+
+
+
 import groovy.lang.Closure
 
 /**
