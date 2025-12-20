@@ -41,7 +41,8 @@ import java.util.stream.Stream;
   * @param <T> Any type
   *
   * @see <a href="https://doc.rust-lang.org/std/option/">Rust counterpart: {@code Option<T>}</a>
-  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell counterpart: {@code Maybe<T>}</a> */
+  * @see <a href="https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Maybe.html">Haskell counterpart: {@code Maybe<T>}</a>
+  * @author Lock1. Taking Haskell's &amp; Rust's respective {@code Maybe<T>} incarnation as the primary inspiration. While some unusual API design arises after consuming JLS for 2 weeks straight. */
 public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Valhalla: public sealed abstract value class Nilable<T>
     /** Type representing container of 1 element. Can be deconstructed via {@code instanceof} and {@code switch} expression.
       * @param <T> Any type
@@ -131,7 +132,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
           * @since JDK 21 */
         public enum MapMulti { ;
             /** Fusion operator: Filter {@link Stream} element &amp; only include downstream if {@link Nilable#isHasValue()}.<br/>
-              * Note: Pre-JDK 21 {@link Stream#mapMulti(BiConsumer)}, this operation usually simulated with {@link Nilable#filter(Predicate)} followed with {@link Nilable#zDangerouslyUnwrap(String)}.
+              * Note: Pre-JDK 21 {@link Stream#mapMulti(BiConsumer)}, this operation usually simulated with {@link Nilable#keepIf(Predicate)} followed with {@link Nilable#zDangerouslyUnwrap(String)}.
               * Another one is using eager {@link Stream#collect(Collector)} with custom filtering {@link Collector}.<br/>
               * This method on the other hand, is "{@link Stream} intermediate operation" like the former.
               * @param <T> Any type
@@ -195,12 +196,23 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
         return this instanceof Nilable.Empty<T> ? Nilable.of(supplier.get()) : this;
     }
 
-    /** Filter this {@link Nilable}, similiar to {@link Stream#filter(Predicate)} with [0..1] element.<br/>
-      * See {@link #isHasValue(Predicate)} for transformation to {@code boolean}.
+    /** Filter this {@link Nilable}: Keep value from this {@link Nilable} if predicate yield true.<br>
+      * This operation is similiar to {@link Stream#filter(Predicate)} with [0..1] element.
+      * See {@link #isHasValue(Predicate)} for transformation to {@code boolean}.<br/>
+      * <h4>Note</h4>
+      * Different naming scheme vs {@link Stream} &amp; {@link Optional} is used to avoid common 1st-time confusion
+      *     (filter as in keep it or remove it? take the value and what are you going to do with it?).
       * @param predicate {@link Predicate} to be invoked when {@link Nilable#isHasValue()}
       * @return Filtered {@link Nilable} */
-    public default Nilable<T> filter(Predicate<? super T> predicate) {
+    public default Nilable<T> keepIf(Predicate<? super T> predicate) {
         return this instanceof Nilable.Has(T value) && predicate.test(value) ? this : Nilable.empty();
+    }
+
+    /** Dual of {@link #keepIf(Predicate)}, remove value from this {@link Nilable} if predicate yield true.<br/>
+      * @param predicate {@link Predicate} to be invoked when {@link Nilable#isHasValue()}
+      * @return Filtered {@link Nilable} */
+    public default Nilable<T> removeIf(Predicate<? super T> predicate) {
+        return this instanceof Nilable.Has(T value) && !predicate.test(value) ? this : Nilable.empty();
     }
 
 
@@ -259,7 +271,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
 
     /** Peek-and-predicate-variant of {@link #isHasValue()}.<br/>
       * Can be handy alternative of {@code instanceof} pattern match without introducing new name/symbol.<br/>
-      * See {@link #filter(Predicate)} for {@link Nilable}-container preserving transformation.
+      * See {@link #keepIf(Predicate)} for {@link Nilable}-container preserving transformation.
       * @param predicate {@link Predicate} to be invoked when {@link Nilable#isHasValue()}
       * @return {@link Nilable.Empty} will produce {@code false}, else {@code predicate} evaluation result
       *
@@ -411,7 +423,7 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
       *
       * @param invariantAssumptionComment Comment explaining why this invocation should be safe
       * @return Non-null value inside this {@link Nilable.Has}
-      * @throws BuggyCodeException Invoked on {@link Nilable.Empty}. Contains {@code invariantAssumptionComment} as the error message. 
+      * @throws BuggyCodeException Unchecked exception, invoked on {@link Nilable.Empty}. Contains {@code invariantAssumptionComment} as the error message. 
       * 
       * @see <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap">Rust counterpart: {@code Option::unwrap()}</a> */
     @Deprecated(since="not-really-deprecated-but-only-used-as-dangerous-marker")
