@@ -234,12 +234,17 @@ public sealed interface Faulty<T,E> extends Transmutable<Faulty<T,E>> { // Post-
     }
 
     /** TODO: Docs. Behave similar to filter() */
-    public default Faulty<T,E> testOrError(Predicate<? super T> predicate, Supplier<? extends E> errorSupplier) {
+    public default Faulty<T,E> keepOkIfOrError(Predicate<? super T> okPredicate, Supplier<? extends E> errorSupplier) {
         return !(this instanceof Faulty.Ok(T value)) ? this : // If this is an error, then short-circuit & keep the value
-               predicate.test(value)                 ? this : new Faulty.Error<>(errorSupplier.get());
+               okPredicate.test(value)               ? this : new Faulty.Error<>(errorSupplier.get());
     }
 
+    public default Faulty<T,E> keepErrorIfOrOk(Predicate<? super E> errorPredicate, Supplier<? extends T> okSupplier) {
+        return !(this instanceof Faulty.Error(E error)) ? this :
+               errorPredicate.test(error)               ? this : new Faulty.Ok<>(okSupplier.get());
+    }
 
+    
 
     // ------------------------- Transmutation methods -------------------------
     /** Outbound-transmutation method: Apply lossy injection {@link Faulty.Ok} {@code ->} {@link Nilable.Has} &amp; {@link Faulty.Error} {@code ->} {@link Nilable.Empty}.

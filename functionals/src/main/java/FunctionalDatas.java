@@ -4,14 +4,14 @@ import java.util.function.Function;
 
 /** Namespace for functional programming common data structures. */
 public enum FunctionalDatas { ;
-    public record TupleOf2<T1,T2>(T1 t1, T2 t2) implements Map.Entry<T1,T2> {
+    public record TupleOf2<T1,T2>(T1 t1, T2 t2) implements Map.Entry<T1,T2>, Transmutable<TupleOf2<T1,T2>> {
         @Override public T1 getKey() { return this.t1; }
         @Override public T2 getValue() { return this.t2; }
         @Override public T2 setValue(T2 arg0) { throw new BuggyCodeException("TupleOf2 does not support Map.setValue()"); }
     }
-    public record TupleOf3<T1,T2,T3>(T1 t1, T2 t2, T3 t3) {}
-    public record TupleOf4<T1,T2,T3,T4>(T1 t1, T2 t2, T3 t3, T4 t4) {}
-    public record TupleOf5<T1,T2,T3,T4,T5>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) {}
+    public record TupleOf3<T1,T2,T3>(T1 t1, T2 t2, T3 t3) implements Transmutable<TupleOf3<T1,T2,T3>> {}
+    public record TupleOf4<T1,T2,T3,T4>(T1 t1, T2 t2, T3 t3, T4 t4) implements Transmutable<TupleOf4<T1,T2,T3,T4>> {}
+    public record TupleOf5<T1,T2,T3,T4,T5>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5) implements Transmutable<TupleOf5<T1,T2,T3,T4,T5>> {}
 
     @FunctionalInterface public interface FunctionOf1<T,R> extends Function<T,R> {}
     @FunctionalInterface public interface FunctionOf2<T1,T2,R> extends BiFunction<T1,T2,R> {
