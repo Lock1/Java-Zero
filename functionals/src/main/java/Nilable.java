@@ -126,27 +126,6 @@ public sealed interface Nilable<T> extends Transmutable<Nilable<T>> { // Post-Va
         return optional.isPresent() ? new Nilable.Has<>(optional.get()) : Nilable.empty();
     }
 
-    /** {@link Nilable} sub-namespace related to {@link Stream}. */
-    public enum Streams { ;
-        /** {@link Nilable}-{@link Stream} sub-namespace dedicated for {@link Stream#mapMulti(BiConsumer)}.
-          * @since JDK 21 */
-        public enum MapMulti { ;
-            /** Fusion operator: Filter {@link Stream} element &amp; only include downstream if {@link Nilable#isHasValue()}.<br/>
-              * Note: Pre-JDK 21 {@link Stream#mapMulti(BiConsumer)}, this operation usually simulated with {@link Nilable#keepIf(Predicate)} followed with {@link Nilable#zDangerouslyUnwrap(String)}.
-              * Another one is using eager {@link Stream#collect(Collector)} with custom filtering {@link Collector}.<br/>
-              * This method on the other hand, is "{@link Stream} intermediate operation" like the former.
-              * @param <T> Any type
-              * @return {@link BiConsumer} that applies side-effect to its arguments
-              */
-            public static <T> BiConsumer<Nilable<T>,Consumer<T>> filterUnwrap() {
-                return (nilable, downstreamPipeline) -> {
-                    if (nilable instanceof Nilable.Has(T value))
-                        downstreamPipeline.accept(value);
-                };
-            }
-        }
-    }
-
 
 
     // ------------------------- Functor instance methods -------------------------
