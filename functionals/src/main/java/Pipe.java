@@ -15,9 +15,9 @@ import java.util.stream.Collector;
 
 
 
+// Incarnation #3: Simple wrapper over Iterator<T>
 public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
-    // Practically, current implementation is just a wrapper over Iterator<T>
-    private Iterator<T> source;
+    private final Iterator<T> source;
 
     private Pipe(Iterator<T> source) {
         this.source = source;
@@ -27,19 +27,26 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
 
     // ---------------------------------------- Instance Methods ----------------------------------------
     public final <R> Pipe<R> map(Function<? super T,? extends R> mapper) {
-        final PipeMapper.MapperOf0Or1<T,R> pipeMapper = (value, downstream) -> downstream.accept(mapper.apply(value));
-        return new Pipe<>(pipeMapper.performMap(this.source));
+        return new Pipe<>(new Iterator<R>() {
+            @Override public boolean hasNext() {
+                return Pipe.this.source.hasNext();
+            }
+
+            @Override public R next() {
+                return mapper.apply(Pipe.this.source.next());
+            }
+        });
     }
 
-    public final <R> Pipe<R> flatMap(Function<? super T,Pipe<? extends R>> mapper) {
-        final PipeMapper<T,R> pipeMapper = source -> new Iterator<R>() {
-            private Iterator<? extends R> buffer;
+    public final <R> Pipe<R> flatMap(Function<? super T,Pipe<R>> mapper) {
+        return new Pipe<>(new Iterator<R>() {
+            private Iterator<R> buffer;
 
             @Override public boolean hasNext() {
                 if (this.buffer != null && this.buffer.hasNext())
                     return true;
-                if (source.hasNext())
-                    this.buffer = mapper.apply(source.next()).source;
+                if (Pipe.this.source.hasNext())
+                    this.buffer = mapper.apply(Pipe.this.source.next()).source;
                 return this.buffer != null && this.buffer.hasNext();
             }
 
@@ -48,45 +55,39 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                     return this.buffer.next();
                 throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
             }
-        };
-        return new Pipe<>(pipeMapper.performMap(this.source));
+        });
     }
 
     public final <$Right> Pipe<FunctionalDatas.TupleOf2<T,$Right>> zip(Pipe<$Right> otherPipe) {
-        final PipeMapper<T,FunctionalDatas.TupleOf2<T,$Right>> pipeMapper = source -> new Iterator<FunctionalDatas.TupleOf2<T,$Right>>() {
+        return new Pipe<>(new Iterator<FunctionalDatas.TupleOf2<T,$Right>>() {
             @Override public boolean hasNext() {
-                return source.hasNext() && otherPipe.source.hasNext();
+                return Pipe.this.source.hasNext() && otherPipe.source.hasNext();
             }
 
             @Override public FunctionalDatas.TupleOf2<T,$Right> next() {
-                return new FunctionalDatas.TupleOf2<>(source.next(), otherPipe.source.next());
+                return new FunctionalDatas.TupleOf2<>(Pipe.this.source.next(), otherPipe.source.next());
             }
-        };
-        return new Pipe<>(pipeMapper.performMap(this.source));
+        });
     }
 
     public final Pipe<T> peek(Consumer<? super T> sideEffectPeeker) {
-        final PipeMapper.MapperOf0Or1<T,T> mapper = (value, downstream) -> {
+        return new Pipe<>(Pipe.applyMapperOf0Or1(this.source, (value, downstream) -> {
             sideEffectPeeker.accept(value);
             downstream.accept(value);
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        }));
     }
 
     // Null reject
     public final Pipe<T> keepIf(Predicate<? super T> predicate) {
-        final PipeMapper.MapperOf0Or1<T,T> mapper = (previousValue, downstream) -> {
+        return new Pipe<>(Pipe.applyMapperOf0Or1(this.source, (previousValue, downstream) -> {
             if (previousValue instanceof final T value && predicate.test(value))
                 downstream.accept(value);
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        }));
     }
 
     // Null reject
     public final Pipe<T> keepWhile(Predicate<? super T> predicate) {
-        final PipeMapper<T,T> mapper = source -> new Iterator<T>() {
+        return new Pipe<>(new Iterator<T>() {
             private boolean accepting = true;
             private T buffer;
             private boolean isValidBuffer = false;
@@ -96,8 +97,8 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                     return true;
                 if (!this.accepting)
                     return false;
-                while (!this.isValidBuffer && source.hasNext()) {
-                    this.buffer        = source.next();
+                while (!this.isValidBuffer && Pipe.this.source.hasNext()) {
+                    this.buffer        = Pipe.this.source.next();
                     this.accepting     = this.buffer instanceof final T value && predicate.test(value);
                     this.isValidBuffer = this.accepting;
                 }
@@ -111,25 +112,21 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                 }
                 throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
             }
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        });
     }
 
     // Null allow
     public final Pipe<T> removeIf(Predicate<? super T> predicate) {
-        final PipeMapper.MapperOf0Or1<T,T> mapper = (previousValue, downstream) -> {
+        return new Pipe<>(Pipe.applyMapperOf0Or1(this.source, (previousValue, downstream) -> {
             if (previousValue instanceof final T value && !predicate.test(value))
                 return;
             downstream.accept(previousValue);
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        }));
     }
 
     // Null allow
     public final Pipe<T> removeWhile(Predicate<? super T> predicate) {
-        final PipeMapper<T,T> mapper = source -> new Iterator<T>() {
+        return new Pipe<>(new Iterator<T>() {
             private boolean rejecting = true;
             private T buffer;
             private boolean isValidBuffer = false;
@@ -137,8 +134,8 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
             @Override public boolean hasNext() {
                 if (this.isValidBuffer)
                     return true;
-                while (!this.isValidBuffer && source.hasNext()) {
-                    this.buffer        = source.next();
+                while (!this.isValidBuffer && Pipe.this.source.hasNext()) {
+                    this.buffer        = Pipe.this.source.next();
                     this.rejecting     = this.rejecting && this.buffer instanceof final T value && !predicate.test(value);
                     this.isValidBuffer = !this.rejecting;
                 }
@@ -152,13 +149,11 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                 }
                 throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
             }
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        });
     }
 
     public final Pipe<T> limit(long count) {
-        final PipeMapper<T,T> mapper = source -> new Iterator<T>() {
+        return new Pipe<>(new Iterator<T>() {
             private long currentCount = 0;
 
             @Override public boolean hasNext() {
@@ -169,13 +164,11 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                 ++this.currentCount;
                 return source.next();
             }
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        });
     }
 
     public final Pipe<T> skip(long count) {
-        final PipeMapper<T,T> mapper = source -> new Iterator<T>() {
+        return new Pipe<>(new Iterator<T>() {
             private long currentCount = 0;
 
             @Override public boolean hasNext() {
@@ -191,13 +184,11 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                     return source.next();
                 throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
             }
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        });
     }
 
     public final <$Key> Pipe<T> distinct(Function<? super T,? extends $Key> keyExtractor) {
-        final PipeMapper<T,T> mapper = source -> new Iterator<T>() {
+        return new Pipe<>(new Iterator<T>() {
             private final HashSet<$Key> observedKeys = new HashSet<>();
             private T buffer;
             private boolean isValidBuffer = false;
@@ -221,20 +212,18 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
                     return this.buffer;
                 throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
             }
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        });
     }
 
     public final Pipe<T> sorted(Comparator<T> comparator) {
-        final PipeMapper<T,T> mapper = source -> {
-            final var intermediateQueue = new PriorityQueue<T>(comparator);
-            while (source.hasNext())
-                intermediateQueue.add(source.next());
-            return intermediateQueue.iterator();
-        };
-        this.source = mapper.performMap(this.source);
-        return this;
+        final var intermediateQueue = new PriorityQueue<T>(comparator);
+        while (source.hasNext())
+            intermediateQueue.add(source.next());
+        return new Pipe<>(intermediateQueue.iterator());
+    }
+
+    public final <R> Pipe<R> intermediate(Function<? super Iterator<T>,? extends Iterator<R>> mapper) {
+        return new Pipe<>(mapper.apply(this.source));
     }
 
 
@@ -407,44 +396,37 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
         };
     }
 
+    /** Contract: {@link Consumer} downstream must be called <b>at most once</b>. */
     @FunctionalInterface
-    private interface PipeMapper<T,R> {
-        Iterator<R> performMap(Iterator<T> source);
+    private interface MapperOf0Or1<T,R> {
+        void consumeAndProduce(T upstreamValue, Consumer<? super R> downstream);
+    }
 
-        /** Contract: {@link Consumer} downstream must be called <b>at most once</b>. */
-        @FunctionalInterface
-        interface MapperOf0Or1<T,R> extends PipeMapper<T,R> {
-            void connect(T upstreamValue, Consumer<? super R> downstream);
+    private static <T,R> Iterator<R> applyMapperOf0Or1(Iterator<T> source, MapperOf0Or1<T,R> mapper) {
+        // Because of [0, 1], source.hasNext() does not necessarily implies this.hasNext()
+        return new Iterator<R>() {
+            private R buffer;
+            private boolean isValidBuffer = false;
 
-            /** WARNING: This variant will forcefully consume upstream. */
-            @Override
-            default Iterator<R> performMap(Iterator<T> source) {
-                // Because of [0, 1], source.hasNext() does not necessarily implies this.hasNext()
-                return new Iterator<R>() {
-                    private R buffer;
-                    private boolean isValidBuffer = false;
-
-                    private void performStoreBuffer(R value) {
-                        this.buffer        = value;
-                        this.isValidBuffer = true;
-                    }
-
-                    @Override public boolean hasNext() {
-                        while (!this.isValidBuffer && source.hasNext())
-                            MapperOf0Or1.this.connect(source.next(), this::performStoreBuffer);
-                        return this.isValidBuffer;
-                    }
-
-                    @Override public R next() {
-                        if (this.hasNext()) {
-                            this.isValidBuffer = false;
-                            return this.buffer;
-                        }
-                        throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
-                    }
-                };
+            private void performStoreBuffer(R value) {
+                this.buffer        = value;
+                this.isValidBuffer = true;
             }
-        }
+
+            @Override public boolean hasNext() {
+                while (!this.isValidBuffer && source.hasNext())
+                    mapper.consumeAndProduce(source.next(), this::performStoreBuffer);
+                return this.isValidBuffer;
+            }
+
+            @Override public R next() {
+                if (this.hasNext()) {
+                    this.isValidBuffer = false;
+                    return this.buffer;
+                }
+                throw new BuggyCodeException("Trying to invoke Iterator.next() when there's no element");
+            }
+        };
     }
 }
 
