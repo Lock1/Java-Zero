@@ -16,6 +16,7 @@ import java.util.stream.Collector;
 
 
 public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
+    // Practically, current implementation is just a wrapper over Iterator<T>
     private Iterator<T> source;
 
     private Pipe(Iterator<T> source) {
@@ -302,7 +303,9 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
     // ---------------------------------------- Static Functions ----------------------------------------
     @SafeVarargs // Read-only on values
     public static <T> Pipe<T> of(T... values) {
-        return new Pipe<>(new Iterator<T>() {
+        final Iterator<T> iterator = values == null || values.length == 0
+            ? Pipe.constructEmptyIterator()
+            : new Iterator<T>() {
             private int idx = 0;
 
             @Override public boolean hasNext() {
@@ -312,7 +315,8 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
             @Override public T next() {
                 return values[idx++];
             }
-        });
+        };
+        return new Pipe<>(iterator);
     }
 
     public static <T> Pipe<T> from(Iterable<T> source) {
@@ -396,6 +400,13 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
 
 
     // ---------------------------------------- Internal ----------------------------------------
+    private static <T> Iterator<T> constructEmptyIterator() {
+        return new Iterator<T>() {
+            @Override public boolean hasNext() { return false; }
+            @Override public T next() { throw new BuggyCodeException("Trying to invoke EmptyIterator.next()"); }
+        };
+    }
+
     @FunctionalInterface
     private interface PipeMapper<T,R> {
         Iterator<R> performMap(Iterator<T> source);
