@@ -18,9 +18,11 @@ import java.util.stream.Collector;
 // Incarnation #3: Simple wrapper over Iterator<T>
 public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
     private final Iterator<T> source;
+    private boolean consumed;
 
     private Pipe(Iterator<T> source) {
         this.source = source;
+        this.consumed = false;
     }
 
 
@@ -232,7 +234,11 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
     /** Consume this {@link Pipe}. */
     @Override
     public final Iterator<T> iterator() {
-        return this.source;
+        if (!this.consumed) {
+            this.consumed = true;
+            return this.source;
+        } else
+            throw new BuggyCodeException("Invoking Pipe.iterator() more than 1");
     }
 
     public final boolean endByMatchAll(Predicate<? super T> predicate) {
@@ -389,11 +395,15 @@ public final class Pipe<T> implements Iterable<T>, Transmutable<Pipe<T>> {
 
 
     // ---------------------------------------- Internal ----------------------------------------
+    @SuppressWarnings("unchecked") // Empty Iterator<?> should be assignable to any Iterator<T>
     private static <T> Iterator<T> constructEmptyIterator() {
-        return new Iterator<T>() {
-            @Override public boolean hasNext() { return false; }
-            @Override public T next() { throw new BuggyCodeException("Trying to invoke EmptyIterator.next()"); }
-        };
+        enum Local { ;
+            static final Iterator<?> EMPTY_ITERATOR = new Iterator<>() {
+                @Override public boolean hasNext() { return false; }
+                @Override public Object next() { throw new BuggyCodeException("Trying to invoke EmptyIterator.next()"); }
+            };
+        }
+        return (Iterator<T>) Local.EMPTY_ITERATOR;
     }
 
     /** Contract: {@link Consumer} downstream must be called <b>at most once</b>. */
